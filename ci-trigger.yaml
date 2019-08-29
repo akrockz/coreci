@@ -1,0 +1,91 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Housekeeping lambdas.
+
+Parameters:
+
+  ArtifactBucketName:
+    Type: String
+    Description: Base URL for artifacts in S3. From deployspec compiler.
+
+  ArtifactKeyPrefix:
+    Type: String
+    Description: Build path prefix for this app. From deployspec compiler.
+
+  LambdaFunctionNamePrefix:
+    Type: String
+
+  Portfolio:
+    Type: String
+
+  App:
+    Type: String
+
+Resources:
+
+  CiLambda:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - CiLogGroup
+    Properties:
+      Description: Clean up old, empty log groups in the account.
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub "${ArtifactKeyPrefix}/ci_trigger.zip"
+      FunctionName: !Sub "${LambdaFunctionNamePrefix}-${Portfolio}-${App}" # Same as LogGroupName
+      Handler: main.handler
+      MemorySize: 1024
+      Role: !GetAtt CiRole.Arn
+      Runtime: python3.7
+      Timeout: 120
+      Environment:
+        Variables:
+          AUTOMATION_REGION: !Sub "${AWS::Region}"
+          AUTOMATION_BUCKET_NAME: !Ref ArtifactBucketName
+          RUN_SH_S3_PATH: !Sub "s3://${ArtifactBucketName}/artefacts/core/automation-runner/master/_latest/run.sh"
+          CLIENT_NAME: abc
+          PIPELINE_PORTFOLIO: !Ref Portfolio
+          PIPELINE_APP: !Ref App
+
+  CiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CiLambdaPolicies
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Portfolio}/${App}/*"
+              - Effect: Allow # To persist the per-account tracking of log groups to delete.
+                Action:
+                  - codebuild:StartBuild
+                Resource:
+                  - !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${Portfolio}-${App}" # build project
+                  # TODO Release, teardown jobs? Those jobs already have master blocks in them too.
+
+  CiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LambdaFunctionNamePrefix}-${Portfolio}-${App}" # Same as FunctionName
+      RetentionInDays: 90
+
+Outputs:
+
+  CiLambdaArn:
+    Value: !GetAtt CiLambda.Arn
