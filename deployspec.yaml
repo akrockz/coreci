@@ -1,0 +1,18 @@
+---
+
+- label: deploy-core-ci-demo-app
+  type: create_stack
+  params:
+    template: ci-trigger.yaml
+    stack_name: "{{ core.Project }}-{{ core.App }}-demo-app"
+    parameters:
+      ArtifactBucketName: "{{ core.ArtifactBucketName }}"
+      ArtifactKeyPrefix: "{{ core.ArtifactKeyPrefix }}"
+      LambdaFunctionNamePrefix: "core-ci"  # Will be core-ci for all actions.
+      Portfolio: "demo"
+      App: "app"
+    accounts:
+      - "2343232"  # Automation account
+    regions:
+      - ap-southeast-1  # Asia Pacific (Singapore)
+      
